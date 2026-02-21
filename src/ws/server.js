@@ -17,14 +17,15 @@ function broadcast(wss, payload) {
 // this functin will receive the http server instant created by express and we are passing it into the websocket so that it can attach itself to the same underlying server . The http server will then listen on that port and handle normal web requests while the websocket will use the same server to handle the upgraded requests
 export function attachWebsocketServer(server) {
   const wss = new WebSocketServer({
-    server,
+    noServer: true,
     path: '/ws',
     maxPayload: 1024 * 1024
   });
   // Validate upgrade requests before WebSocket handshake
   server.on('upgrade', async (req, socket, head) => {
     try {
-      if (req.url !== '/ws') {
+      const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
+      if (pathname !== '/ws') {
         socket.destroy();
         return;
       }
