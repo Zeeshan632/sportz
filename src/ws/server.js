@@ -21,30 +21,55 @@ export function attachWebsocketServer(server) {
     path: '/ws',
     maxPayload: 1024 * 1024
   });
+  // Validate upgrade requests before WebSocket handshake
+  server.on('upgrade', async (req, socket, head) => {
+    try {
+      if (req.url !== '/ws') {
+        socket.destroy();
+        return;
+      }
 
-  wss.on('connection', async(socket, req) => {
-    if(wsArcjet){
-      try {
-        const decision = await wsArcjet.protect(req)
-        if(decision.isDenied()){
-          const code = decision.reason.isRateLimit() ? 1013 : 1008;
-          const reason = decision.reason.isRateLimit() ? 'Rate limit exceeded' : 'Access denied';
-          socket.close(code, reason);
+      if (wsArcjet) {
+        try {
+          const decision = await wsArcjet.protect(req);
+          if (decision.isDenied()) {
+            const isRate = decision.reason && typeof decision.reason.isRateLimit === 'function' && decision.reason.isRateLimit();
+            const status = isRate ? 429 : 403;
+            const phrase = isRate ? 'Too Many Requests' : 'Forbidden';
+            const body = isRate ? 'Rate limit exceeded' : 'Access denied';
+            const res = `HTTP/1.1 ${status} ${phrase}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`;
+            socket.write(res);
+            socket.destroy();
+            return;
+          }
+        } catch (err) {
+          console.error('Error during wsArcjet pre-handshake:', err);
+          try {
+            const body = 'Server security error';
+            const res = `HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`;
+            socket.write(res);
+          } catch (e) {
+            // ignore
+          }
+          socket.destroy();
           return;
         }
-      }catch(err){
-        console.error('Error during wsArcjet handshake:', err);
-        socket.close(1011, 'Server security error');
-        return
       }
-    }
-    
-    socket.isAlive = true;
-    socket.on('pong', () => {socket.isAlive = true})
 
-    sendJson(socket, {type: 'welcome'})
-    socket.on('error', console.error)
-  })
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    } catch (err) {
+      console.error('Unexpected error in upgrade handler:', err);
+      try { socket.destroy(); } catch (e) {}
+    }
+  });
+
+  wss.on('connection', (socket, req) => {
+    socket.isAlive = true;
+    socket.on('pong', () => { socket.isAlive = true });
+
+    sendJson(socket, {type: 'welcome'});
+    socket.on('error', console.error);
+  });
 
   const interval = setInterval(() => {
     wss.clients.forEach((socket) => {
