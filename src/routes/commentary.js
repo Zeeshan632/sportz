@@ -6,7 +6,7 @@ import {
 import { matchIdParamSchema } from '../validation/matches.js';
 import { db } from '../db/db.js';
 import { commentary } from '../db/schema.js';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 
 export const commentaryRouter = Router({ mergeParams: true });
 
@@ -34,7 +34,7 @@ commentaryRouter.get('/', async (req, res) => {
     const data = await db
       .select()
       .from(commentary)
-      .where({ matchId })
+      .where(eq(commentary.matchId, matchId))
       .orderBy(desc(commentary.createdAt))
       .limit(limit);
 
@@ -43,7 +43,6 @@ commentaryRouter.get('/', async (req, res) => {
     console.error('Error fetching commentary:', error);
     return res.status(500).json({
       error: 'failed to fetch commentary',
-      details: JSON.stringify(error),
     });
   }
 });
@@ -84,7 +83,6 @@ commentaryRouter.post('/', async (req, res) => {
     console.error('Error creating commentary:', error);
     return res.status(500).json({
       error: 'failed to create commentary',
-      details: JSON.stringify(error),
     });
   }
 });

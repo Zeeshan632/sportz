@@ -15,5 +15,3 @@ export const createCommentarySchema = z.object({
   metadata: z.record(z.string(), z.any()).optional(),
   tags: z.array(z.string()).optional(),
 })
-
-export default null
